@@ -1,21 +1,24 @@
 """
 run_diagnosis_gemini.py — feeds every case in data/cases.csv to Google's
-Gemini model (free tier, no credit card required) using the same NetSage AI
-system prompt, and saves results to data/ai_results.json — same file, same
-schema, that the website already reads. This is a free alternative to
-run_diagnosis.py (which uses the paid Anthropic API).
+Gemini model (free tier, no credit card required) using the NetSage AI
+system prompt, and saves results to data/ai_results.json — keyed by your
+"Case ID" values, matching what script.js expects.
+
+This version reads YOUR CSV's actual column names directly:
+    Case ID, Case Name, Symptom, Topology, Evidence, Expected Fault,
+    OSI Layer, Concept, Severity
 
 Setup:
     1. Get a free key at https://aistudio.google.com (Get API key -> default
        Gemini project). No credit card required.
     2. Set it as an environment variable:
-       export GOOGLE_API_KEY="AIzaSy..."        (macOS/Linux/VS Code bash terminal)
+       export GOOGLE_API_KEY="AIzaSy..."        (macOS/Linux/bash)
        $env:GOOGLE_API_KEY="AIzaSy..."           (Windows PowerShell)
 
 Usage:
-    python3 scripts/run_diagnosis_gemini.py                 # run every case
-    python3 scripts/run_diagnosis_gemini.py C001 C010        # run only specific case IDs
-    python3 scripts/run_diagnosis_gemini.py --overwrite      # re-run cases that already have a result
+    python run_diagnosis_gemini.py                 # run every case
+    python run_diagnosis_gemini.py C01 C10          # run only specific case IDs
+    python run_diagnosis_gemini.py --overwrite      # re-run cases that already have a result
 
 No third-party packages required — uses only Python's standard library.
 """
@@ -27,8 +30,14 @@ import time
 import urllib.request
 import urllib.error
 
-MODEL = "gemini-2.0-flash"
+MODEL = "gemini-3.6-flash"
 API_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+
+# Your CSV's actual column names — edit here if you rename columns again
+COL_CASE_ID = "Case ID"
+COL_SYMPTOM = "Symptom"
+COL_TOPOLOGY = "Topology"
+COL_EVIDENCE = "Evidence"
 
 SYSTEM_PROMPT = """You are NetSage AI, a troubleshooting assistant for junior network engineers working in Cisco Packet Tracer labs. You are shown a SYMPTOM, a TOPOLOGY NOTE, and SHOW-COMMAND OUTPUT. Propose the most likely root cause using ONLY the evidence given.
 
@@ -104,20 +113,28 @@ def main():
     with open(csv_path, newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
 
+    # Sanity check: make sure the expected columns actually exist
+    missing = [c for c in (COL_CASE_ID, COL_SYMPTOM, COL_TOPOLOGY, COL_EVIDENCE) if rows and c not in rows[0]]
+    if missing:
+        print(f"ERROR: cases.csv is missing expected column(s): {missing}")
+        print(f"Your actual columns are: {list(rows[0].keys()) if rows else '(file is empty)'}")
+        print("Edit COL_CASE_ID / COL_SYMPTOM / COL_TOPOLOGY / COL_EVIDENCE at the top of this script to match.")
+        sys.exit(1)
+
     if only_ids:
-        rows = [r for r in rows if r["case_id"] in only_ids]
+        rows = [r for r in rows if r[COL_CASE_ID] in only_ids]
 
     print(f"Running diagnosis for {len(rows)} case(s) using Gemini (free tier)...\n")
     for i, row in enumerate(rows, 1):
-        cid = row["case_id"]
+        cid = row[COL_CASE_ID]
         if cid in results and not overwrite:
             print(f"[{i}/{len(rows)}] {cid} — already has a result, skipping (use --overwrite to redo)")
             continue
 
         user_message = (
-            f"SYMPTOM: {row['symptom']}\n"
-            f"TOPOLOGY NOTE: {row['topology_note']}\n"
-            f"SHOW OUTPUT:\n{row['show_output']}"
+            f"SYMPTOM: {row[COL_SYMPTOM]}\n"
+            f"TOPOLOGY NOTE: {row[COL_TOPOLOGY]}\n"
+            f"SHOW OUTPUT:\n{row[COL_EVIDENCE]}"
         )
         print(f"[{i}/{len(rows)}] {cid} — calling Gemini...")
         result = call_gemini(api_key, user_message)

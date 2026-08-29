@@ -67,9 +67,22 @@
     loadLocal();
     const casesArr = await fetchJson("data/cases.json", []);
     casesArr.forEach((c) => {
-      baseCases[c.case_id] = c;
-      baseOrder.push(c.case_id);
-    });
+  const normalizedCase = {
+    case_id: c["Case ID"],
+    case_name: c["Case Name"],
+    symptom: c["Symptom"],
+    topology_note: c["Topology"],
+    show_output: c["Evidence"],
+    expected_fault: c["Expected Fault"],
+    osi_layer: c["OSI Layer"],
+    concept_tag: c["Concept"],
+    category: c["Concept"],
+    severity: c["Severity"]
+  };
+
+  baseCases[normalizedCase.case_id] = normalizedCase;
+  baseOrder.push(normalizedCase.case_id);
+});
     aiResults = await fetchJson("data/ai_results.json", {});
     const ruleReport = await fetchJson("data/rule_checker_report.json", []);
     ruleReport.forEach((r) => {
